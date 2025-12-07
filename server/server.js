@@ -116,6 +116,45 @@ io.on('connection', (socket) => {
         }, 2000);
     });
 
+    socket.on('send_reaction', ({ roomCode, type }) => {
+        // type: 'laugh', 'angry', 'clap'
+        socket.to(roomCode).emit('reaction_received', type);
+    });
+
+    socket.on('request_rematch', ({ roomCode }) => {
+        const room = rooms[roomCode];
+        if (!room) return;
+
+        // Initialize rematch flags if not present
+        if (!room.rematchRequests) room.rematchRequests = new Set();
+
+        room.rematchRequests.add(socket.id);
+
+        // Notify other player that opponent wants rematch
+        socket.to(roomCode).emit('rematch_requested');
+
+        // If both requested (assuming 2 players)
+        if (room.rematchRequests.size >= 2) {
+            console.log(`Starting rematch in room ${roomCode}`);
+
+            // Reset Game State
+            room.score = { host: 0, guest: 0 };
+            room.currentQuestionIndex = 0;
+            room.processingAnswer = false;
+            room.rematchRequests.clear();
+
+            // Generate NEW questions
+            generateQuestionsBatch(roomCode, room.topic).then(() => {
+                io.to(roomCode).emit('game_start', {
+                    roomCode,
+                    topic: room.topic,
+                    names: { host: room.hostName, guest: room.guestName }
+                });
+                sendNextQuestion(roomCode);
+            });
+        }
+    });
+
     socket.on('disconnect', () => {
         // Handle disconnects
     });

@@ -17,6 +17,9 @@ function App() {
   const [names, setNames] = useState({ host: 'Host', guest: 'Guest' });
   const [gameStatus, setGameStatus] = useState('active');
   const [myRole, setMyRole] = useState(null); // 'host' or 'guest'
+  const [lastReaction, setLastReaction] = useState(null);
+  const [rematchRequested, setRematchRequested] = useState(false);
+  const [opponentWantsRematch, setOpponentWantsRematch] = useState(false);
 
   useEffect(() => {
     socket.on('room_created', (code) => {
@@ -31,7 +34,10 @@ function App() {
       setNames(data.names);
       setGameStatus('preparing');
       setStage('game');
-      if (!myRole) setMyRole('guest'); // If not set by room_created, I must be guest
+      setScore({ host: 0, guest: 0 }); // Reset score on new game
+      setRematchRequested(false);
+      setOpponentWantsRematch(false);
+      if (!myRole) setMyRole('guest');
     });
 
     socket.on('new_question', (data) => {
@@ -45,12 +51,16 @@ function App() {
     });
 
     socket.on('game_over', (finalScore) => {
-      alert(`Partita Finita! Punteggio: ${names.host}: ${finalScore.host} - ${names.guest}: ${finalScore.guest}`);
-      setStage('landing');
-      setRoomCode('');
-      setNames({ host: 'Host', guest: 'Guest' });
-      setScore({ host: 0, guest: 0 });
-      setMyRole(null);
+      setScore(finalScore);
+      setGameStatus('game_over');
+    });
+
+    socket.on('reaction_received', (type) => {
+      setLastReaction({ type, id: Date.now() });
+    });
+
+    socket.on('rematch_requested', () => {
+      setOpponentWantsRematch(true);
     });
 
     socket.on('error', (msg) => { alert(msg); });
@@ -61,6 +71,8 @@ function App() {
       socket.off('new_question');
       socket.off('score_update');
       socket.off('game_over');
+      socket.off('reaction_received');
+      socket.off('rematch_requested');
       socket.off('error');
     };
   }, [names, myRole]);
@@ -79,6 +91,16 @@ function App() {
     setGameStatus('round_locked');
   };
 
+  const handleReaction = (type) => {
+    socket.emit('send_reaction', { roomCode, type });
+    setLastReaction({ type, id: Date.now(), isMe: true }); // Show my own reaction too
+  };
+
+  const handleRematch = () => {
+    socket.emit('request_rematch', { roomCode });
+    setRematchRequested(true);
+  };
+
   return (
     <div className="App">
       {stage === 'landing' && <Landing onCreate={handleCreate} onJoin={handleJoin} />}
@@ -88,8 +110,14 @@ function App() {
           questionData={questionData}
           score={score}
           names={names}
+          myRole={myRole}
           onAnswer={handleAnswer}
           gameStatus={gameStatus}
+          lastReaction={lastReaction}
+          onReaction={handleReaction}
+          onRematch={handleRematch}
+          rematchRequested={rematchRequested}
+          opponentWantsRematch={opponentWantsRematch}
         />
       )}
     </div>

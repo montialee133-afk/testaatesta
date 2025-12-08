@@ -6,6 +6,7 @@ import { RefreshCw, Timer as TimerIcon } from 'lucide-react';
 export default function Game({
     questionData,
     score,
+    streaks,
     names,
     onAnswer,
     gameStatus,
@@ -14,16 +15,30 @@ export default function Game({
     onReaction,
     onRematch,
     rematchRequested,
-    opponentWantsRematch
+    opponentWantsRematch,
+    isMyFinished,
+    opponentNameForWaiting
 }) {
     const [selectedOption, setSelectedOption] = useState(null);
     const [visibleReactions, setVisibleReactions] = useState([]);
-    const [timeLeft, setTimeLeft] = useState(15); // For visual only
+    const [timeLeft, setTimeLeft] = useState(15);
 
     // Reset selection and timer when question changes
     useEffect(() => {
         setSelectedOption(null);
-        setTimeLeft(15); // Reset timer text
+        setTimeLeft(15);
+
+        const timer = setInterval(() => {
+            setTimeLeft((prev) => {
+                if (prev <= 0) {
+                    clearInterval(timer);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(timer);
     }, [questionData]);
 
     // Handle incoming reactions
@@ -44,16 +59,20 @@ export default function Game({
     }, [lastReaction]);
 
     const handleOptionClick = (index) => {
+        if (selectedOption !== null) return; // Prevent double clicks
         setSelectedOption(index);
-        onAnswer(index);
+        onAnswer(index, timeLeft);
     };
 
     // Determine who is Left (Me) and Right (Them)
     const iAmHost = myRole === 'host';
     const leftName = iAmHost ? names.host : names.guest;
     const leftScore = iAmHost ? score.host : score.guest;
+    const leftStreak = iAmHost ? streaks.host : streaks.guest;
+
     const rightName = iAmHost ? names.guest : names.host;
     const rightScore = iAmHost ? score.guest : score.host;
+    const rightStreak = iAmHost ? streaks.guest : streaks.host;
 
     // --- GAME OVER SCREEN ---
     if (gameStatus === 'game_over') {
@@ -113,6 +132,39 @@ export default function Game({
         );
     }
 
+    if (gameStatus === 'waiting_for_opponent') {
+        return (
+            <div className="flex flex-col items-center justify-center h-dvh w-screen bg-[#0a0a0f] text-white p-6 relative overflow-hidden">
+                <div className="text-center space-y-6 z-10">
+                    <h1 className="text-4xl font-black uppercase tracking-tighter mb-4 text-cyan-400 animate-pulse">
+                        Hai Finito! 🚀
+                    </h1>
+                    <p className="text-xl text-slate-400">
+                        In attesa che <span className="text-rose-400 font-bold">{opponentNameForWaiting || "l'avversario"}</span> finisca...
+                    </p>
+                    <div className="flex justify-center mt-8">
+                        <div className="w-16 h-16 border-4 border-t-cyan-500 border-white/10 rounded-full animate-spin"></div>
+                    </div>
+                </div>
+                {/* Reaction Bar for waiting */}
+                <div className="absolute bottom-10 left-0 right-0 p-4 flex justify-center gap-4">
+                    {['laugh', 'clap', 'angry', 'poop'].map(type => (
+                        <button
+                            key={type}
+                            onClick={() => onReaction(type)}
+                            className="text-2xl hover:scale-125 transition-transform active:scale-90"
+                        >
+                            {type === 'laugh' && '😂'}
+                            {type === 'clap' && '👏'}
+                            {type === 'angry' && '🤬'}
+                            {type === 'poop' && '💩'}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
     if (!questionData) {
         return (
             <div className="flex items-center justify-center h-dvh w-screen bg-[#0a0a0f] text-white">
@@ -151,24 +203,30 @@ export default function Game({
             <div className="flex-none flex justify-between items-center bg-slate-900/80 backdrop-blur-md p-4 border-b border-white/5 z-20">
                 <div className="flex flex-col items-start w-1/3">
                     <span className="text-cyan-400 text-[10px] font-black uppercase tracking-widest truncate max-w-full">TU ({leftName})</span>
-                    <span className="text-cyan-500 font-black text-4xl drop-shadow-[0_0_10px_rgba(6,182,212,0.5)]">{leftScore}</span>
+                    <div className="flex items-center gap-2">
+                        <span className="text-cyan-500 font-black text-4xl drop-shadow-[0_0_10px_rgba(6,182,212,0.5)]">{leftScore}</span>
+                        {leftStreak > 1 && <span className="text-orange-500 font-bold animate-bounce">🔥 {leftStreak}</span>}
+                    </div>
                 </div>
                 {/* Timer Bar */}
                 <div className="w-1/3 flex flex-col items-center gap-1">
+                    <span className="text-xs font-mono text-slate-400">{timeLeft}s</span>
                     <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-                        <div
+                        <motion.div
                             key={questionData.question} // Key change forces animation reset
+                            initial={{ width: "100%" }}
+                            animate={{ width: "0%" }}
+                            transition={{ duration: 15, ease: "linear" }}
                             className="h-full bg-gradient-to-r from-green-500 to-yellow-500 origin-left"
-                            style={{
-                                animation: 'shrink 15s linear forwards',
-                                width: '100%'
-                            }}
-                        ></div>
+                        />
                     </div>
                 </div>
                 <div className="flex flex-col items-end w-1/3">
                     <span className="text-rose-400 text-[10px] font-black uppercase tracking-widest truncate max-w-full text-right">{rightName}</span>
-                    <span className="text-rose-500 font-black text-4xl drop-shadow-[0_0_10px_rgba(244,63,94,0.5)]">{rightScore}</span>
+                    <div className="flex items-center gap-2 flex-row-reverse">
+                        <span className="text-rose-500 font-black text-4xl drop-shadow-[0_0_10px_rgba(244,63,94,0.5)]">{rightScore}</span>
+                        {rightStreak > 1 && <span className="text-orange-500 font-bold animate-bounce">🔥 {rightStreak}</span>}
+                    </div>
                 </div>
             </div>
 

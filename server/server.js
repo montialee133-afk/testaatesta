@@ -29,6 +29,7 @@ io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
     // Expecting object: { topic, username }
+    // Expecting object: { topic, username }
     socket.on('create_room', (data) => {
         const topic = data.topic || "General";
         const username = data.username || "Host";
@@ -41,10 +42,17 @@ io.on('connection', (socket) => {
             guestName: null,
             topic: topic,
             status: 'waiting',
-            score: { host: 0, guest: 0 },
-            questions: [],
-            currentQuestionIndex: 0,
-            processingAnswer: false
+            players: {
+                [socket.id]: {
+                    id: socket.id,
+                    score: 0,
+                    streak: 0,
+                    questionIndex: 0,
+                    finished: false,
+                    name: username
+                }
+            },
+            questions: []
         };
         socket.join(roomCode);
         socket.emit('room_created', roomCode);
@@ -61,6 +69,16 @@ io.on('connection', (socket) => {
             room.guest = socket.id;
             room.guestName = username;
 
+            // Initialize Guest Player State
+            room.players[socket.id] = {
+                id: socket.id,
+                score: 0,
+                streak: 0,
+                questionIndex: 0,
+                finished: false,
+                name: username
+            };
+
             socket.join(roomCode);
             room.status = 'playing';
 
@@ -75,45 +93,85 @@ io.on('connection', (socket) => {
             // Generate ALL questions at start
             await generateQuestionsBatch(roomCode, room.topic);
 
-            // Send first question
-            sendNextQuestion(roomCode);
+            // Send first question to BOTH players independently
+            Object.keys(room.players).forEach(playerId => {
+                sendNextQuestion(roomCode, playerId);
+            });
 
         } else {
             socket.emit('error', 'Room not found or full');
         }
     });
 
-    socket.on('submit_answer', ({ roomCode, answerIndex }) => {
+    socket.on('submit_answer', ({ roomCode, answerIndex, timeRemaining }) => {
         const room = rooms[roomCode];
-        if (!room || room.status !== 'playing' || room.processingAnswer) return;
+        if (!room || room.status !== 'playing') return;
 
-        const currentQ = room.questions[room.currentQuestionIndex];
+        const playerState = room.players[socket.id];
+        if (!playerState || playerState.finished) return;
+
+        const currentQ = room.questions[playerState.questionIndex];
         if (!currentQ) return;
 
-        room.processingAnswer = true; // Lock rounds
-
         const isCorrect = answerIndex === currentQ.correctIndex;
-        const playerRole = socket.id === room.host ? 'host' : 'guest';
-        const opponentRole = playerRole === 'host' ? 'guest' : 'host';
 
+        let points = 0;
         if (isCorrect) {
-            room.score[playerRole]++;
-            console.log(`Point for ${playerRole} in room ${roomCode}`);
+            // Scoring Logic:
+            // Base: 100
+            // Time Bonus: up to 50 points (linear approx 3.3 pts per sec remaining, assuming 15s max)
+            // Streak Bonus: 20 points per streak count
+            const basePoints = 100;
+            const timeBonus = Math.round((timeRemaining || 0) * 3.33);
+            const streakBonus = playerState.streak * 20;
+
+            points = basePoints + timeBonus + streakBonus;
+
+            playerState.score += points;
+            playerState.streak++;
+
+            console.log(`Player ${socket.id} Correct! Points: ${points} (Base: ${basePoints}, Time: ${timeBonus}, Streak: ${streakBonus})`);
         } else {
-            // Wrong answer -> Point to Opponent
-            room.score[opponentRole]++;
-            console.log(`Wrong answer by ${playerRole}. Point to ${opponentRole} in room ${roomCode}`);
+            playerState.streak = 0; // Reset streak
+            console.log(`Player ${socket.id} Wrong.`);
         }
 
-        // Notify everyone of the update
-        io.to(roomCode).emit('score_update', room.score);
+        // Move to next question
+        playerState.questionIndex++;
 
-        // Move to next question after delay
-        setTimeout(() => {
-            room.currentQuestionIndex++;
-            room.processingAnswer = false;
-            sendNextQuestion(roomCode);
-        }, 2000);
+        // Notify everyone of score updates (so opponent sees progress)
+        io.to(roomCode).emit('score_update', {
+            score: {
+                host: room.players[room.host]?.score || 0,
+                guest: room.players[room.guest]?.score || 0
+            },
+            streaks: {
+                host: room.players[room.host]?.streak || 0,
+                guest: room.players[room.guest]?.streak || 0
+            }
+        });
+
+        // Check if finished
+        if (playerState.questionIndex >= room.questions.length) {
+            playerState.finished = true;
+            socket.emit('player_finished'); // Notify this player they are done
+
+            // Check if ALL finished
+            const allFinished = Object.values(room.players).every(p => p.finished);
+            if (allFinished) {
+                io.to(roomCode).emit('game_over', {
+                    host: room.players[room.host].score,
+                    guest: room.players[room.guest].score
+                });
+                room.status = 'finished';
+            } else {
+                // Notify opponent that this player is done (optional UI cue)
+                socket.to(roomCode).emit('opponent_finished', { opponentName: playerState.name });
+            }
+        } else {
+            // Send next question immediately
+            sendNextQuestion(roomCode, socket.id);
+        }
     });
 
     socket.on('send_reaction', ({ roomCode, type }) => {
@@ -138,10 +196,16 @@ io.on('connection', (socket) => {
             console.log(`Starting rematch in room ${roomCode}`);
 
             // Reset Game State
-            room.score = { host: 0, guest: 0 };
-            room.currentQuestionIndex = 0;
-            room.processingAnswer = false;
             room.rematchRequests.clear();
+            room.status = 'playing';
+
+            // Allow processing again
+            Object.values(room.players).forEach(p => {
+                p.score = 0;
+                p.streak = 0;
+                p.questionIndex = 0;
+                p.finished = false;
+            });
 
             // Generate NEW questions
             generateQuestionsBatch(roomCode, room.topic).then(() => {
@@ -150,7 +214,9 @@ io.on('connection', (socket) => {
                     topic: room.topic,
                     names: { host: room.hostName, guest: room.guestName }
                 });
-                sendNextQuestion(roomCode);
+                Object.keys(room.players).forEach(playerId => {
+                    sendNextQuestion(roomCode, playerId);
+                });
             });
         }
     });
@@ -165,7 +231,7 @@ async function generateQuestionsBatch(roomCode, topic) {
     if (!room) return;
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-3-pro-preview" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Speed over quality for batch
         const prompt = `Genera 10 domande di cultura generale su "${topic}" in ITALIANO. 
         Ogni domanda deve avere 4 opzioni e l'indice della risposta corretta.
         Restituisci ESCLUSIVAMENTE un array JSON valido in questo formato esatto:
@@ -206,15 +272,23 @@ async function generateQuestionsBatch(roomCode, topic) {
     }
 }
 
-function sendNextQuestion(roomCode) {
+function sendNextQuestion(roomCode, socketId) {
     const room = rooms[roomCode];
     if (!room) return;
 
-    if (room.currentQuestionIndex < room.questions.length) {
-        const questionData = room.questions[room.currentQuestionIndex];
-        io.to(roomCode).emit('new_question', questionData);
+    const player = room.players[socketId];
+    if (!player) return;
+
+    if (player.questionIndex < room.questions.length) {
+        const questionData = room.questions[player.questionIndex];
+        // Send specific question to specific socket
+        io.to(socketId).emit('new_question', {
+            ...questionData,
+            totalQuestions: room.questions.length, // info for progress bar
+            currentIndex: player.questionIndex + 1
+        });
     } else {
-        io.to(roomCode).emit('game_over', room.score);
+        // Already finished, do nothing (wait for final game_over broadcast)
     }
 }
 

@@ -14,12 +14,16 @@ function App() {
   const [topic, setTopic] = useState('');
   const [questionData, setQuestionData] = useState(null);
   const [score, setScore] = useState({ host: 0, guest: 0 });
+  const [streaks, setStreaks] = useState({ host: 0, guest: 0 });
   const [names, setNames] = useState({ host: 'Host', guest: 'Guest' });
   const [gameStatus, setGameStatus] = useState('active');
   const [myRole, setMyRole] = useState(null); // 'host' or 'guest'
   const [lastReaction, setLastReaction] = useState(null);
   const [rematchRequested, setRematchRequested] = useState(false);
   const [opponentWantsRematch, setOpponentWantsRematch] = useState(false);
+
+  const [isMyFinished, setIsMyFinished] = useState(false);
+  const [opponentNameForWaiting, setOpponentNameForWaiting] = useState(null);
 
   useEffect(() => {
     socket.on('room_created', (code) => {
@@ -35,6 +39,9 @@ function App() {
       setGameStatus('preparing');
       setStage('game');
       setScore({ host: 0, guest: 0 }); // Reset score on new game
+      setStreaks({ host: 0, guest: 0 });
+      setIsMyFinished(false);
+      setOpponentNameForWaiting(null);
       setRematchRequested(false);
       setOpponentWantsRematch(false);
       if (!myRole) setMyRole('guest');
@@ -45,9 +52,19 @@ function App() {
       setGameStatus('active');
     });
 
-    socket.on('score_update', (newScore) => {
-      setScore(newScore);
-      setGameStatus('round_locked');
+    socket.on('score_update', (data) => {
+      setScore(data.score);
+      setStreaks(data.streaks);
+      // Removed round_locked here because we don't want to lock if opponent answers
+    });
+
+    socket.on('player_finished', () => {
+      setIsMyFinished(true);
+      setGameStatus('waiting_for_opponent');
+    });
+
+    socket.on('opponent_finished', ({ opponentName }) => {
+      setOpponentNameForWaiting(opponentName);
     });
 
     socket.on('game_over', (finalScore) => {
@@ -70,6 +87,8 @@ function App() {
       socket.off('game_start');
       socket.off('new_question');
       socket.off('score_update');
+      socket.off('player_finished');
+      socket.off('opponent_finished');
       socket.off('game_over');
       socket.off('reaction_received');
       socket.off('rematch_requested');
@@ -86,9 +105,9 @@ function App() {
     setMyRole('guest');
   };
 
-  const handleAnswer = (answerIndex) => {
-    socket.emit('submit_answer', { roomCode, answerIndex });
-    setGameStatus('round_locked');
+  const handleAnswer = (answerIndex, timeRemaining) => {
+    socket.emit('submit_answer', { roomCode, answerIndex, timeRemaining });
+    setGameStatus('round_locked'); // Lock locally until next question logic clears it
   };
 
   const handleReaction = (type) => {
@@ -109,6 +128,7 @@ function App() {
         <Game
           questionData={questionData}
           score={score}
+          streaks={streaks}
           names={names}
           myRole={myRole}
           onAnswer={handleAnswer}
@@ -118,6 +138,8 @@ function App() {
           onRematch={handleRematch}
           rematchRequested={rematchRequested}
           opponentWantsRematch={opponentWantsRematch}
+          isMyFinished={isMyFinished}
+          opponentNameForWaiting={opponentNameForWaiting}
         />
       )}
     </div>

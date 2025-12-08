@@ -231,7 +231,7 @@ async function generateQuestionsBatch(roomCode, topic) {
     if (!room) return;
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Speed over quality for batch
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" }); // Reverting to stable model
         const prompt = `Genera 10 domande di cultura generale su "${topic}" in ITALIANO. 
         Ogni domanda deve avere 4 opzioni e l'indice della risposta corretta.
         Restituisci ESCLUSIVAMENTE un array JSON valido in questo formato esatto:

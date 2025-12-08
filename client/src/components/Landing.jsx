@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, LogIn, User, Hash, Sparkles, Film, Music, Trophy, Globe, FlaskConical, Tv, Gamepad2, UtensilsCrossed, BookOpen, Landmark, Shuffle } from 'lucide-react';
-import sounds from '../hooks/useSounds';
+import sounds, { unlockAudio } from '../hooks/useSounds';
 
 // Predefined categories with icons and colors
 const CATEGORIES = [
@@ -26,6 +26,8 @@ export default function Landing({ onCreate, onJoin }) {
     const [showCustomInput, setShowCustomInput] = useState(false);
 
     const handleCategoryClick = (category) => {
+        // Unlock audio on first interaction
+        unlockAudio();
         sounds.click();
         if (category.id === 'random') {
             // Select random category (excluding 'random' itself)
@@ -39,16 +41,20 @@ export default function Landing({ onCreate, onJoin }) {
         setCustomTopic('');
     };
 
-    const handleCreateClick = () => {
+    const handleCreateClick = async () => {
         if (!username.trim()) return alert("Inserisci il tuo nome!");
         const topic = showCustomInput ? customTopic : (selectedCategory?.name || "Cultura Generale");
+        // Unlock audio on iOS with user gesture
+        await unlockAudio();
         sounds.click();
         onCreate(topic, username);
     };
 
-    const handleJoinClick = () => {
+    const handleJoinClick = async () => {
         if (!username.trim()) return alert("Inserisci il tuo nome!");
         if (!joinCode.trim()) return alert("Inserisci il codice stanza!");
+        // Unlock audio on iOS with user gesture
+        await unlockAudio();
         sounds.click();
         onJoin(joinCode, username);
     };
@@ -194,6 +200,7 @@ export default function Landing({ onCreate, onJoin }) {
                                 {/* Custom Topic Button */}
                                 <motion.button
                                     onClick={() => {
+                                        unlockAudio();
                                         sounds.click();
                                         setShowCustomInput(!showCustomInput);
                                         setSelectedCategory(null);

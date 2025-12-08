@@ -1,5 +1,15 @@
 // Sound system using Web Audio API - no external files needed
-const audioContext = typeof window !== 'undefined' ? new (window.AudioContext || window.webkitAudioContext)() : null;
+// Lazy initialization for mobile compatibility
+
+let audioContext = null;
+
+// Initialize AudioContext on first user interaction (required for mobile)
+const getAudioContext = () => {
+  if (!audioContext && typeof window !== 'undefined') {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioContext;
+};
 
 // Sound enabled state (persisted in localStorage)
 let soundEnabled = typeof window !== 'undefined'
@@ -9,44 +19,70 @@ let soundEnabled = typeof window !== 'undefined'
 export const setSoundEnabled = (enabled) => {
   soundEnabled = enabled;
   if (typeof window !== 'undefined') {
-    localStorage.setItem('soundEnabled', enabled);
+    localStorage.setItem('soundEnabled', String(enabled));
   }
 };
 
 export const isSoundEnabled = () => soundEnabled;
 
-// Resume audio context on first user interaction
-const resumeAudio = () => {
-  if (audioContext && audioContext.state === 'suspended') {
-    audioContext.resume();
+// Unlock audio on user interaction (critical for iOS/mobile)
+const unlockAudio = () => {
+  const ctx = getAudioContext();
+  if (ctx && ctx.state === 'suspended') {
+    ctx.resume();
+  }
+  // Play a silent buffer to fully unlock on iOS
+  if (ctx) {
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
   }
 };
 
+// Add multiple event listeners to unlock audio
 if (typeof window !== 'undefined') {
-  document.addEventListener('click', resumeAudio, { once: true });
-  document.addEventListener('touchstart', resumeAudio, { once: true });
+  const events = ['touchstart', 'touchend', 'click', 'keydown'];
+  const unlock = () => {
+    unlockAudio();
+    events.forEach(e => document.removeEventListener(e, unlock));
+  };
+  events.forEach(e => document.addEventListener(e, unlock, { passive: true }));
 }
 
 // Generate different sound types
 const playTone = (frequency, duration, type = 'sine', volume = 0.3) => {
-  if (!audioContext || !soundEnabled) return;
+  if (!soundEnabled) return;
 
-  resumeAudio();
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
 
-  const oscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
+    // Resume if suspended
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
 
-  oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
 
-  oscillator.frequency.value = frequency;
-  oscillator.type = type;
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
 
-  gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+    oscillator.frequency.value = frequency;
+    oscillator.type = type;
 
-  oscillator.start(audioContext.currentTime);
-  oscillator.stop(audioContext.currentTime + duration);
+    const now = ctx.currentTime;
+    gainNode.gain.setValueAtTime(volume, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+    oscillator.start(now);
+    oscillator.stop(now + duration);
+  } catch (e) {
+    // Silently fail if audio not available
+    console.log('Audio playback failed:', e);
+  }
 };
 
 // Sound effects

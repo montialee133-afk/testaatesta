@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Share2, Volume2, VolumeX, Check, X } from 'lucide-react';
+import { RefreshCw, Share2, Volume2, VolumeX, Check, X, Home } from 'lucide-react';
 import sounds, { isSoundEnabled, setSoundEnabled } from '../hooks/useSounds';
 import { fireVictoryConfetti, fireCorrectConfetti, fireStreakConfetti } from '../utils/confetti';
 
@@ -21,7 +21,8 @@ export default function Game({
     isMyFinished,
     opponentNameForWaiting,
     answerResult,
-    topic
+    topic,
+    onGoHome
 }) {
     const [selectedOption, setSelectedOption] = useState(null);
     const [visibleReactions, setVisibleReactions] = useState([]);
@@ -258,27 +259,38 @@ ${resultText}
                             </div>
                         )}
 
-                        <div className="flex gap-3">
+                        <div className="flex flex-wrap justify-center gap-3">
                             <button
                                 onClick={onRematch}
                                 disabled={rematchRequested}
                                 className={clsx(
-                                    "flex items-center gap-2 px-6 py-4 rounded-xl font-bold text-lg transition-all transform hover:scale-105 active:scale-95 shadow-xl",
+                                    "flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-base transition-all transform hover:scale-105 active:scale-95 shadow-xl",
                                     rematchRequested
                                         ? "bg-slate-800 text-slate-500 cursor-not-allowed"
                                         : "bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:from-pink-500 hover:to-purple-500"
                                 )}
                             >
                                 <RefreshCw className={clsx("w-5 h-5", rematchRequested && "animate-spin")} />
-                                {rematchRequested ? "In attesa..." : "RIVINCITA"}
+                                {rematchRequested ? "Attesa..." : "RIVINCITA"}
                             </button>
 
                             <button
                                 onClick={handleShare}
-                                className="flex items-center gap-2 px-6 py-4 rounded-xl font-bold text-lg bg-gradient-to-r from-cyan-600 to-blue-600 text-white hover:from-cyan-500 hover:to-blue-500 transition-all transform hover:scale-105 active:scale-95 shadow-xl"
+                                className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-base bg-gradient-to-r from-cyan-600 to-blue-600 text-white hover:from-cyan-500 hover:to-blue-500 transition-all transform hover:scale-105 active:scale-95 shadow-xl"
                             >
                                 <Share2 className="w-5 h-5" />
                                 CONDIVIDI
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    sounds.click();
+                                    onGoHome();
+                                }}
+                                className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-base bg-slate-700 text-white hover:bg-slate-600 transition-all transform hover:scale-105 active:scale-95 shadow-xl"
+                            >
+                                <Home className="w-5 h-5" />
+                                HOME
                             </button>
                         </div>
                     </motion.div>

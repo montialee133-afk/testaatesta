@@ -139,6 +139,25 @@ function App() {
     setRematchRequested(true);
   };
 
+  const handleGoHome = () => {
+    // Reset all state and go back to landing
+    setStage('landing');
+    setRoomCode('');
+    setTopic('');
+    setQuestionData(null);
+    setScore({ host: 0, guest: 0 });
+    setStreaks({ host: 0, guest: 0 });
+    setNames({ host: 'Host', guest: 'Guest' });
+    setGameStatus('active');
+    setMyRole(null);
+    setLastReaction(null);
+    setRematchRequested(false);
+    setOpponentWantsRematch(false);
+    setAnswerResult(null);
+    setIsMyFinished(false);
+    setOpponentNameForWaiting(null);
+  };
+
   return (
     <div className="App">
       {stage === 'landing' && <Landing onCreate={handleCreate} onJoin={handleJoin} />}
@@ -161,6 +180,7 @@ function App() {
           opponentNameForWaiting={opponentNameForWaiting}
           answerResult={answerResult}
           topic={topic}
+          onGoHome={handleGoHome}
         />
       )}
     </div>

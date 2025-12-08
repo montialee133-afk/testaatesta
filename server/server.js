@@ -136,6 +136,14 @@ io.on('connection', (socket) => {
             console.log(`Player ${socket.id} Wrong.`);
         }
 
+        // Send answer result to the player who answered
+        socket.emit('answer_result', {
+            isCorrect,
+            correctIndex: currentQ.correctIndex,
+            points,
+            streak: playerState.streak
+        });
+
         // Move to next question
         playerState.questionIndex++;
 

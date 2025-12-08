@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import Landing from './components/Landing';
 import Lobby from './components/Lobby';
 import Game from './components/Game';
+import sounds from './hooks/useSounds';
 
 // Connect to backend
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -21,6 +22,7 @@ function App() {
   const [lastReaction, setLastReaction] = useState(null);
   const [rematchRequested, setRematchRequested] = useState(false);
   const [opponentWantsRematch, setOpponentWantsRematch] = useState(false);
+  const [answerResult, setAnswerResult] = useState(null);
 
   const [isMyFinished, setIsMyFinished] = useState(false);
   const [opponentNameForWaiting, setOpponentNameForWaiting] = useState(null);
@@ -44,12 +46,28 @@ function App() {
       setOpponentNameForWaiting(null);
       setRematchRequested(false);
       setOpponentWantsRematch(false);
+      setAnswerResult(null);
       if (!myRole) setMyRole('guest');
+      sounds.gameStart();
+    });
+
+    socket.on('answer_result', (data) => {
+      setAnswerResult(data);
+      if (data.isCorrect) {
+        if (data.streak > 1) {
+          sounds.streak(data.streak);
+        } else {
+          sounds.correct();
+        }
+      } else {
+        sounds.wrong();
+      }
     });
 
     socket.on('new_question', (data) => {
       setQuestionData(data);
       setGameStatus('active');
+      setAnswerResult(null); // Clear previous answer result
     });
 
     socket.on('score_update', (data) => {
@@ -92,6 +110,7 @@ function App() {
       socket.off('game_over');
       socket.off('reaction_received');
       socket.off('rematch_requested');
+      socket.off('answer_result');
       socket.off('error');
     };
   }, [names, myRole]);
@@ -140,6 +159,8 @@ function App() {
           opponentWantsRematch={opponentWantsRematch}
           isMyFinished={isMyFinished}
           opponentNameForWaiting={opponentNameForWaiting}
+          answerResult={answerResult}
+          topic={topic}
         />
       )}
     </div>
